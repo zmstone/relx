@@ -651,9 +651,9 @@ parse_application({application, Name, Dict}, File, Vsn, Incls)
   when is_atom(Name),
        is_list(Dict) ->
     Items = [vsn,id,description,modules,registered,
-	     applications,included_applications,mod,start_phases,env,maxT,maxP],
+	     applications,included_applications,mod,start_phases,env,maxT,maxP,relup_deps],
     case catch get_items(Items, Dict) of
-	[Vsn,Id,Desc,Mods,Regs,Apps,Incs0,Mod,Phases,Env,MaxT,MaxP] ->
+	[Vsn,Id,Desc,Mods,Regs,Apps,Incs0,Mod,Phases,Env,MaxT,MaxP,RelupDeps] ->
 	    case override_include(Name, Incs0, Incls) of
 		{ok, Incs} ->
 		    {ok, #application{name=Name,
@@ -661,7 +661,7 @@ parse_application({application, Name, Dict}, File, Vsn, Incls)
 				      id=Id,
 				      description=Desc,
 				      modules=Mods,
-				      uses=Apps,
+				      uses=merge_deps(Apps, RelupDeps),
 				      includes=Incs,
 				      regs=Regs,
 				      mod=Mod,
@@ -673,13 +673,20 @@ parse_application({application, Name, Dict}, File, Vsn, Incls)
 		{error, IncApps} ->
 		    {error, {override_include, IncApps}}
 	    end;
-	[OtherVsn,_,_,_,_,_,_,_,_,_,_,_] ->
+	[OtherVsn,_,_,_,_,_,_,_,_,_,_,_,_] ->
 	    {error, {no_valid_version, {Vsn, OtherVsn}}};
 	Err ->
 	    {error, {Err, {application, Name, Dict}}}
     end;
 parse_application(Other, _, _, _) ->
     {error, {badly_formatted_application, Other}}.
+
+merge_deps(Uses, []) -> Uses;
+merge_deps(Uses, [Dep | Deps]) ->
+    case lists:member(Dep, Uses) of
+        true -> merge_deps(Uses,Deps);
+        false -> merge_deps(Uses ++ [Dep], Deps)
+    end.
 
 %% Test if all included applications specifed in the .rel file
 %% exists in the {included_applications,Incs} specified in the
@@ -790,6 +797,16 @@ check_item(false, maxT) -> % maxT is optional !
     infinity;
 check_item(false, maxP) -> % maxP is optional !
     infinity;
+check_item(false, relup_deps) -> % rleup_deps is optional !
+    [];
+check_item({value, Value}, relup_deps) ->
+    {_, Deps} = Value, % assert
+    case is_list(Deps) andalso lists:all(fun erlang:is_atom/1, Deps) of
+        true -> Deps;
+        false -> throw({bad_param, Value})
+    end;
+check_item(X, relup_deps) ->
+    throw({bad_param, {relup_deps, X}});
 check_item(_, Item) ->
     throw({missing_param, Item}).
 
@@ -1315,7 +1332,6 @@ script_end(false) ->  %% Do not skip loading of $HOME/.erlang
      {progress, started}];
 script_end(true) ->   %% Ignore loading of $HOME/.erlang
     [{progress, started}].
-
 
 %%-----------------------------------------------------------------
 %% Function: sort_appls(Appls) -> {ok, Appls'} | throw({error, Error})
