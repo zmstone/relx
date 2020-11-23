@@ -435,7 +435,7 @@ create_remove_app_scripts(FromRel, ToRel, RU0s, W0s) ->
 		      not lists:keymember(N, 1, ToRel#release.applications)],
     %% io:format("Removed apps: ~p~n", [RemovedNs]),
     RUs = [[{remove_application, N}] || N <- RemovedNs],
-    {RUs ++ RU0s, W0s}.
+    {RU0s ++ RUs, W0s}.
 
 %% get_script_from_appup(Mode, TopApp, BaseVsn, Ws, RUs) -> {NRUs, NWs}
 %% Mode = up | dn
