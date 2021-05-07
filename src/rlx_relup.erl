@@ -8,10 +8,16 @@
 
 -spec do(atom(), string(), string() | undefined, rlx_state:t()) -> {ok, rlx_state:t()} | relx:error().
 do(RelName, ToVsn, undefined, State) ->
-    OutputDir = rlx_state:base_output_dir(State),
-    ReleasesDir = filename:join([OutputDir, RelName, "releases"]),
-    PreVsns = get_versions_before(RelName, ToVsn, ReleasesDir),
-    make_upfrom_script(RelName, ToVsn, PreVsns, State);
+    case os:getenv("RELX_BASE_VERSIONS") of
+        X when X =:= "" orelse X =:= false ->
+            OutputDir = rlx_state:base_output_dir(State),
+            ReleasesDir = filename:join([OutputDir, RelName, "releases"]),
+            PreVsns = get_versions_before(RelName, ToVsn, ReleasesDir),
+            make_upfrom_script(RelName, ToVsn, PreVsns, State);
+        Str ->
+            ?log_debug("RELX_BASE_VERSIONS: ~s", [Str]),
+            make_upfrom_script(RelName, ToVsn, string:tokens(Str, ","), State)
+    end;
 do(RelName, ToVsn, UpFromVsn, State) ->
     make_upfrom_script(RelName, ToVsn, [UpFromVsn], State).
 
