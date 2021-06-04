@@ -568,7 +568,7 @@ print_error(Other) ->
     io:format("Error: ~tp~n", [Other]).
 
 format_error({file_problem, {File, What}}) ->
-    io_lib:format("Could not ~w file ~ts~n", [get_reason(What), File]);
+    io_lib:format("Could not ~w file ~ts~n~p~n", [get_reason(What), File, What]);
 format_error({no_relup, File, App, Vsn}) ->
     io_lib:format("No release upgrade script entry for ~w-~ts to ~w-~ts "
 		  "in file ~ts~n",
