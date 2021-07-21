@@ -52,8 +52,8 @@ make_upfrom_script(Name, ToVsn, UpFromVsnList, State) ->
                                 end],
     CurrentRel = strip_dot_rel(find_rel_file(Name, ToVsn, OutputDir)),
     UpFromRels = [strip_dot_rel(find_rel_file(Name, UpFromVsn, OutputDir)) || UpFromVsn <- UpFromVsnList],
-    ?log_debug("rlx_systools:mk_relup(~p, ~p, ~p, ~p)", [CurrentRel, UpFromRels, UpFromRels, Options]),
-    case rlx_systools:mk_relup(CurrentRel, UpFromRels, UpFromRels, [no_warn_sasl | Options]) of
+    ?log_debug("systools:make_relup(~p, ~p, ~p, ~p)", [CurrentRel, UpFromRels, UpFromRels, Options]),
+    case systools:make_relup(CurrentRel, UpFromRels, UpFromRels, [no_warn_sasl | Options]) of
         ok ->
             ?log_info("relup from ~p to ~s successfully created!", [UpFromRels, CurrentRel]),
             {ok, State};
