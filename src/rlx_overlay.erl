@@ -308,9 +308,13 @@ do_individual_overlay(State, Release, _Files, OverlayVars, {template, From, To})
                    fun(FromFile) ->
                            file_render_do(OverlayVars, To,
                                           fun(ToFile) ->
-                                                  write_template(OverlayVars,
-                                                                 absolute_path_from(State, FromFile),
-                                                                 absolute_path_to(State, Release, ToFile))
+                                                  wildcard_write_template(
+                                                    State,
+                                                    Release,
+                                                    OverlayVars,
+                                                    FromFile,
+                                                    ToFile
+                                                    )
                                           end)
                    end).
 
@@ -400,13 +404,37 @@ render_template(OverlayVars, Data) ->
             ?RLX_ERROR({unable_to_render_template, Data, Reason})
     end.
 
+-spec wildcard_write_template(rlx_state:t(), rlx_release:t(), proplists:proplist(), file:name(), file:name()) ->
+        ok | relx:error().
+wildcard_write_template(State, Release, OverlayVars, FromFile0, ToFile0) ->
+    FromFile1 = absolute_path_from(State, FromFile0),
+    ToFile1 = absolute_path_to(State, Release, ToFile0),
+    FromFiles = if
+        is_list(FromFile1) -> filelib:wildcard(FromFile1);
+        true -> [FromFile1]
+    end,
+    ToFile2 = case is_directory(ToFile0) of
+        false -> {file, ToFile1};
+        true -> rlx_file_utils:mkdir_p(ToFile1),
+                {dir, ToFile1}
+    end,
+    lists:foldl(fun
+        (_, {error, _} = Error) -> Error;
+        (FromF, ok) ->
+            write_template(OverlayVars, FromF, ToFile2)
+    end, ok, FromFiles).
+
 -spec write_template(proplists:proplist(), file:name(), file:name()) ->
                             ok | relx:error().
-write_template(OverlayVars, FromFile, ToFile) ->
+write_template(OverlayVars, FromFile, {Type, ToFile0}) ->
     case file:read_file(FromFile) of
         {ok, File} ->
             case render_template(OverlayVars, File) of
                 {ok, IoData} ->
+                    ToFile = case Type of
+                        dir -> filename:join([ToFile0, filename:basename(FromFile)]);
+                        file -> ToFile0
+                    end,
                     case filelib:ensure_dir(ToFile) of
                         ok ->
                             %% we were asked to render a template
