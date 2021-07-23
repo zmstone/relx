@@ -8,12 +8,18 @@
 
 -spec do(atom(), string(), string() | undefined, rlx_state:t()) -> {ok, rlx_state:t()} | relx:error().
 do(RelName, ToVsn, undefined, State) ->
-    OutputDir = rlx_state:base_output_dir(State),
-    ReleasesDir = filename:join([OutputDir, RelName, "releases"]),
-    LastRelVsn = get_version_before(RelName, ToVsn, ReleasesDir),
-    make_upfrom_script(RelName, ToVsn, LastRelVsn, State);
+    case os:getenv("RELX_BASE_VERSIONS") of
+        X when X =:= "" orelse X =:= false ->
+            OutputDir = rlx_state:base_output_dir(State),
+            ReleasesDir = filename:join([OutputDir, RelName, "releases"]),
+            PreVsns = get_versions_before(RelName, ToVsn, ReleasesDir),
+            make_upfrom_script(RelName, ToVsn, PreVsns, State);
+        Str ->
+            ?log_debug("RELX_BASE_VERSIONS: ~s", [Str]),
+            make_upfrom_script(RelName, ToVsn, string:tokens(Str, ","), State)
+    end;
 do(RelName, ToVsn, UpFromVsn, State) ->
-    make_upfrom_script(RelName, ToVsn, UpFromVsn, State).
+    make_upfrom_script(RelName, ToVsn, [UpFromVsn], State).
 
 format_error({relfile_not_found, {Name, Vsn}}) ->
     io_lib:format("Release ~p-~s not found", [Name, Vsn]);
@@ -34,7 +40,7 @@ format_error({relup_script_generation_error, Module, Error}) ->
 
 %%
 
-make_upfrom_script(Name, ToVsn, UpFromVsn, State) ->
+make_upfrom_script(Name, ToVsn, UpFromVsnList, State) ->
     OutputDir = rlx_state:base_output_dir(State),
     OutDir = filename:join([OutputDir, atom_to_list(Name), "releases", ToVsn]),
     WarningsAsErrors = rlx_state:warnings_as_errors(State),
@@ -45,14 +51,14 @@ make_upfrom_script(Name, ToVsn, UpFromVsn, State) ->
                                     false -> []
                                 end],
     CurrentRel = strip_dot_rel(find_rel_file(Name, ToVsn, OutputDir)),
-    UpFromRel = strip_dot_rel(find_rel_file(Name, UpFromVsn, OutputDir)),
-    ?log_debug("systools:make_relup(~p, ~p, ~p, ~p)", [CurrentRel, UpFromRel, UpFromRel, Options]),
-    case systools:make_relup(CurrentRel, [UpFromRel], [UpFromRel], [no_warn_sasl | Options]) of
+    UpFromRels = [strip_dot_rel(find_rel_file(Name, UpFromVsn, OutputDir)) || UpFromVsn <- UpFromVsnList],
+    ?log_debug("systools:make_relup(~p, ~p, ~p, ~p)", [CurrentRel, UpFromRels, UpFromRels, Options]),
+    case systools:make_relup(CurrentRel, UpFromRels, UpFromRels, [no_warn_sasl | Options]) of
         ok ->
-            ?log_info("relup from ~s to ~s successfully created!", [UpFromRel, CurrentRel]),
+            ?log_info("relup from ~p to ~s successfully created!", [UpFromRels, CurrentRel]),
             {ok, State};
         error ->
-            erlang:error(?RLX_ERROR({relup_generation_error, CurrentRel, UpFromRel}));
+            erlang:error(?RLX_ERROR({relup_generation_error, CurrentRel, UpFromRels}));
         {ok, _RelUp, _, []} ->
             ?log_info("relup successfully created!"),
             {ok, State};
@@ -81,7 +87,7 @@ find_rel_file(Name, Vsn, Dir) when is_atom(Name) ,
 find_rel_file(Name, Vsn, _) ->
     erlang:error(?RLX_ERROR({bad_rel_tuple, {Name, Vsn}})).
 
-get_version_before(Name, Vsn, ReleasesDir) ->
+get_versions_before(Name, Vsn, ReleasesDir) ->
     %% Given directory where all releases for `Name' are find all versions of the release.
     %% Since the releases directory will have other files like `RELEASES', use the wildcard
     %% `*/Name.rel' to find all version directories and then trim down to just the version
@@ -97,10 +103,10 @@ get_version_before(Name, Vsn, ReleasesDir) ->
     %% take the last element of a list that has every element up to the `Vsn' we are building
     %% the relup for. This will be the most recent version of the same release found.
     case lists:reverse(lists:takewhile(fun({_, X}) -> X =/= Vsn end, SortedVsns)) of
-        [{_, LastVersion} | _] ->
-            LastVersion;
-        _ ->
-            erlang:error(?RLX_ERROR({no_upfrom_release_found, Vsn}))
+        [] ->
+            erlang:error(?RLX_ERROR({no_upfrom_release_found, Vsn}));
+        PreVsns ->
+            PreVsns
     end.
 
 vsn_lte({VsnA, _}, {VsnB, _}) ->
